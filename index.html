@@ -135,7 +135,6 @@ function initEditor(){
     else{_db('dbBundle','📦 Loading... ('+_initRetries+'/'+_MAX_INIT_RETRIES+')')}
     var ob=document.getElementById('openBtn');if(ob&&_initRetries===1){ob.style.pointerEvents='none';ob.style.opacity='0.5';var sp=ob.querySelector('span');if(sp)sp.textContent='Loading editor...'}
     if(_initRetries>=_MAX_INIT_RETRIES){
-    if(_initRetries>=_MAX_INIT_RETRIES){
       var es=document.getElementById('emptyState');
       if(es){
         var h1=es.querySelector('h1'),p=es.querySelector('p'),ea=es.querySelector('.empty-actions');
