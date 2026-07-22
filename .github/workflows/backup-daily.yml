@@ -1,0 +1,29 @@
+name: Daily Backup
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create backup archive
+        run: |
+          TS=$(date -u +'%Y-%m-%d_%H%M')
+          echo "ARCHIVE=grapejs-backup-${TS}.tar.gz" >> $GITHUB_ENV
+          git archive --format=tar.gz --output="grapejs-backup-${TS}.tar.gz" HEAD
+          ls -lh "grapejs-backup-${TS}.tar.gz"
+
+      - name: Upload to Google Drive
+        uses: adityak74/google-drive-upload-git-action@v1
+        with:
+          credentials: ${{ secrets.GDRIVE_CREDENTIALS }}
+          filename: ${{ env.ARCHIVE }}
+          folderId: ${{ secrets.GDRIVE_FOLDER_ID }}
+          overwrite: 'false'
