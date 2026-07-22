@@ -38,7 +38,7 @@
     <div class="brand"><span class="brand-mark">J</span><span class="brand-copy"><b>JAYABINA</b><small>Visual Editor · GrapesJS 0.23.2</small></span></div>
     <div class="file-drop-area">
       <label for="fileInput" id="openBtn" class="btn primary" style="cursor:pointer"><svg><use href="#i-upload"/></svg><span>Open HTML</span></label>
-      <input type="file" id="fileInput" accept=".html,.htm" onchange="(function(inp){try{if(inp.files&&inp.files[0]){if(typeof handleFileOpen==='function'){handleFileOpen(inp.files[0])}else{window._pendingFile=inp.files[0];var fi=document.getElementById('fileInfo');if(fi)fi.innerHTML='<b>Editor loading...</b><small>Your file will open once ready</small>'}}inp.value=''}catch(e){console.error(e);inp.value=''}})(this)" hidden>
+      <input type="file" id="fileInput" accept=".html,.htm" onchange="(function(inp){try{if(inp.files&&inp.files[0]){if(typeof handleFileOpen==='function'){handleFileOpen(inp.files[0])}else{window._pendingFile=inp.files[0];var fi=document.getElementById('fileInfo');if(fi)fi.innerHTML='<b>Editor loading...</b><small>Your file will open once ready</small>'}}inp.value=''}catch(e){console.error(e);inp.value=''}})(this)" style="position:absolute;opacity:0;width:0.1px;height:0.1px;overflow:hidden">
     </div>
     <button class="btn primary" id="downloadBtn" onclick="handleDownload()" disabled><svg><use href="#i-download"/></svg><span>Download</span></button>
     <div class="file-info" id="fileInfo"><b>No file loaded</b><small>Open an HTML file to edit</small></div>
@@ -52,6 +52,13 @@
     <div class="spacer"></div>
     <div class="tool-group"><button class="btn" onclick="openCode()"><svg><use href="#i-code"/></svg><span>Code</span></button><button class="btn desktop-optional" onclick="runCommand('gjs-export-zip')"><svg><use href="#i-export"/></svg><span>ZIP</span></button></div>
   </nav>
+
+  <div id="debugBar" style="background:#1a3a2a;color:#9ce7b7;padding:4px 12px;font-size:10px;font-family:monospace;display:flex;gap:16px;overflow:hidden;white-space:nowrap">
+    <span id="dbState">⌛ INIT</span>
+    <span id="dbBundle">📦 Bundle: waiting</span>
+    <span id="dbFile">📄 File: none</span>
+    <span id="dbEditor">✏️ Editor: none</span>
+  </div>
 
   <section class="workspace">
     <aside class="sidebar left" id="leftSidebar"><div class="side-head"><b>Content blocks</b><button class="icon-btn side-close" onclick="closeSides()"><svg><use href="#i-close"/></svg></button></div><div class="side-scroll" id="blocksPanel"></div></aside>
@@ -126,6 +133,7 @@ var G=window.JayaGrapesFull||{};
 var _initRetries=0,_MAX_INIT_RETRIES=40;
 
 var _bundleReady=false;
+function _db(k,v){var el=document.getElementById(k);if(el)el.textContent=v;console.log('[DBG]',k,v)}
 
 function initEditor(){
   if(!window.JayaGrapesFull||!window.JayaGrapesFull.grapesjs||window.JayaGrapesFull.version!=='0.23.2'){
@@ -146,9 +154,9 @@ function initEditor(){
     document.getElementById('fileInfo').innerHTML='<b>Loading editor...</b><small>GrapesJS 0.23.2 ('+_initRetries+'/'+_MAX_INIT_RETRIES+')</small>';
     setTimeout(initEditor,600);return
   }
-  G=window.JayaGrapesFull;_bundleReady=true;setInfo();document.getElementById('canvasStatus').classList.add('hidden');setupDragDrop();
+  G=window.JayaGrapesFull;_bundleReady=true;_db('dbBundle','📦 Bundle: OK v'+G.version);_db('dbState','✅ READY');setInfo();document.getElementById('canvasStatus').classList.add('hidden');setupDragDrop();
   var ob=document.getElementById('openBtn');if(ob){ob.style.pointerEvents='';ob.style.opacity='';var sp=ob.querySelector('span');if(sp)sp.textContent='Open HTML'}
-  if(window._pendingFile){var pf=window._pendingFile;window._pendingFile=null;handleFileOpen(pf)}
+  if(window._pendingFile){_db('dbFile','📄 Pending file...');var pf=window._pendingFile;window._pendingFile=null;handleFileOpen(pf)}
 }
 
 if(sessionStorage.getItem('gjs_unlock')){initEditor()}
@@ -163,15 +171,16 @@ function splitDocument(html){
 }
 
 function handleFileOpen(file){
-  if(!file){return}
-  if(!_bundleReady){toast('Editor is still loading. Please wait.',false);return}
-  if(file.size>5242880){toast('File too large. Maximum 5 MB.',false);setInfo();return}
-  if(!confirmDiscard()){return}
+  if(!file){_db('dbFile','📄 No file');return}
+  if(!_bundleReady){_db('dbFile','📄 Bundle not ready');toast('Editor is still loading. Please wait.',false);return}
+  if(file.size>5242880){_db('dbFile','📄 File too large: '+Math.round(file.size/1024)+'KB');toast('File too large. Maximum 5 MB.',false);setInfo();return}
+  if(!confirmDiscard()){_db('dbFile','📄 Discard cancelled');return}
   _fileSeq++;var mySeq=_fileSeq;
   currentFileName=file.name||'untitled.html';
-  _log('File: '+esc(currentFileName)+' ('+Math.round(file.size/1024)+' KB)');
+  _db('dbFile','📄 '+esc(currentFileName)+' ('+Math.round(file.size/1024)+'KB)');
+  _db('dbState','⏳ Reading...');
   var reader=new FileReader();
-  reader.onload=function(e){if(mySeq!==_fileSeq){return}_log('File read OK');try{currentEnvelope=splitDocument(e.target.result);if(mySeq!==_fileSeq)return;if(!currentEnvelope.bodyHtml||currentEnvelope.bodyHtml.trim().length===0){_log('Empty body',true);toast('This file appears to be empty or has no visible content.',false);setInfo();return}_log('HTML parsed: '+(currentEnvelope.bodyHtml||'').length+' chars body');_openWithRetry()}catch(err){_log('PARSE ERROR: '+err.message,true);toast('Failed to parse HTML: '+err.message,false);onEditorError('The file could not be parsed as valid HTML: '+err.message)}};
+  reader.onload=function(e){if(mySeq!==_fileSeq){_db('dbFile','📄 Stale read, ignored');return}_db('dbState','⏳ Parsing...');try{currentEnvelope=splitDocument(e.target.result);if(mySeq!==_fileSeq)return;if(!currentEnvelope.bodyHtml||currentEnvelope.bodyHtml.trim().length===0){_db('dbFile','📄 Empty body');toast('This file appears to be empty or has no visible content.',false);setInfo();return}_db('dbState','⏳ Building editor...');_openWithRetry()}catch(err){_db('dbState','❌ Parse error: '+err.message);toast('Failed to parse HTML: '+err.message,false);onEditorError('The file could not be parsed as valid HTML: '+err.message)}};
   reader.onerror=function(){if(mySeq!==_fileSeq)return;_log('READ ERROR');toast('Failed to read file',false);setInfo()};
   _log('Reading file...');
   reader.readAsText(file)
@@ -230,6 +239,7 @@ function buildEditor(){
   editor.on('update',function(){if(!editor.getDirtyCount())return;dirty=true;document.getElementById('downloadBtn').disabled=false;setInfo('dirty','Unsaved changes')});
   editor.on('component:selected',function(){if(innerWidth<=760){showRightPane('styles');document.getElementById('rightSidebar').classList.add('open')}});
   dirty=false;document.getElementById('downloadBtn').disabled=false;document.getElementById('emptyState').classList.add('hidden');document.getElementById('canvasStatus').classList.remove('hidden');document.getElementById('canvasSite').textContent=currentFileName;setInfo('loaded','Ready to edit');toast(currentFileName+' loaded',true);
+  _db('dbEditor','✏️ Active: '+currentFileName);_db('dbState','✅ EDITING');
   addMarketingBlocks()
 }
 
